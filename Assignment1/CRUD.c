@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+// define a User structure to store the properties of user as object
 struct User
 {
     int id;
@@ -7,6 +8,20 @@ struct User
     int age;
 };
 
+// check if the name entered is valid or not
+int isNameValid(char name[])
+{
+    if(name[0]=='\0')
+    return 0;
+    for(int i=0;name[i]!='\0';i++)
+    {
+        if(!((name[i]>='A'&& name[i]<='Z') || (name[i]>='a'&&name[i]<='z')))
+        return 0;
+    }
+    return 1;
+}
+
+// create new user with unique id
 void createUser()
 {
     FILE *fp;
@@ -17,11 +32,11 @@ void createUser()
     scanf("%d", &id);
 
     fp = fopen("users.txt", "r");
-    if (fp!=NULL)
+    if(fp!=NULL)
     {
-        while (fscanf(fp, "%d %s %d", &user.id, user.name, &user.age) != EOF)
+        while (fscanf(fp, "%d %49s %d", &user.id, user.name, &user.age) == 3 )
         {
-            if (user.id == id)
+            if(user.id==id)
             {
                 fclose(fp);
                 printf("ID must be unique!\n");
@@ -39,16 +54,30 @@ void createUser()
     }
     user.id = id;
     printf("Enter Name: ");
-    scanf("%s", user.name);
+    scanf("%49s", user.name);
+
+    if(!isNameValid(user.name))
+    {
+        printf("Invalid name!\n");
+        fclose(fp);
+        return;
+    }
 
     printf("Enter Age: ");
     scanf("%d", &user.age);
+    if(user.age<1 || user.age>110)
+    {
+        printf("Invalid age!\n");
+        fclose(fp);
+        return;
+    }
 
     fprintf(fp, "%d %s %d\n", user.id, user.name, user.age);
     fclose(fp);
     printf("User added successfully.\n");
 }
 
+// read the user on the basis of unique id
 void readUsers()
 {
     FILE *fp;
@@ -61,13 +90,14 @@ void readUsers()
     }
     printf("\nID\tName\tAge\n");
     printf("-------------------------\n");
-    while (fscanf(fp, "%d %s %d", &user.id, user.name, &user.age)!=EOF)
+    while (fscanf(fp, "%d %49s %d", &user.id, user.name, &user.age)==3)
     {
         printf("%d\t%s\t%d\n", user.id, user.name, user.age);
     }
     fclose(fp);
 }
 
+// update the properties(name, age) of user
 void updateUser()
 {
     FILE *fp;
@@ -85,14 +115,31 @@ void updateUser()
     printf("Enter ID to update: ");
     scanf("%d", &id);
 
-    while (fscanf(fp, "%d %s %d", &user.id, user.name, &user.age)!=EOF)
+    while(fscanf(fp, "%d %49s %d", &user.id, user.name, &user.age)==3)
     {
-        if (user.id==id)
+        if(user.id==id)
         {
             printf("Enter new name: ");
-            scanf("%s", user.name);
+            scanf("%49s", user.name);
+
+            if(!isNameValid(user.name))
+            {
+                printf("Invalid name!\n");
+                fclose(fp);
+                fclose(temp);
+                remove("temp.txt");
+                return;
+            }
             printf("Enter new age: ");
             scanf("%d", &user.age);
+            if(user.age<1 || user.age>110)
+            {
+                printf("Invalid age!\n");
+                fclose(fp);
+                fclose(temp);
+                remove("temp.txt");
+                return;
+            }
             flag = 1;
         }
 
@@ -103,12 +150,13 @@ void updateUser()
     fclose(temp);
     remove("users.txt");
     rename("temp.txt", "users.txt");
-    if (flag == 1)
+    if (flag==1)
     printf("User updated successfully.\n");
     else
     printf("User not found.\n");
 }
 
+// delete a user
 void deleteUser()
 {
     FILE *fp;
@@ -129,7 +177,7 @@ void deleteUser()
     printf("Enter ID to delete: ");
     scanf("%d", &id);
 
-    while (fscanf(fp, "%d %s %d", &user.id, user.name, &user.age) != EOF)
+    while (fscanf(fp, "%d %49s %d", &user.id, user.name, &user.age) == 3)
     {
         if (user.id==id)
         {
@@ -152,7 +200,18 @@ void deleteUser()
     printf("User not found.\n");
 }
 
-int main()
+// show the menu to user
+void showMenu()
+{
+    printf("1. Create User\n");
+    printf("2. Read Users\n");
+    printf("3. Update User\n");
+    printf("4. Delete User\n");
+    printf("5. Exit\n");
+}
+
+// function to open or create file and start operations
+int start()
 {
     FILE *fp;
     fp = fopen("users.txt", "a");
@@ -165,20 +224,14 @@ int main()
     while(1)
     {
         char x;
-        printf("1. Create User\n");
-        printf("2. Read Users\n");
-        printf("3. Update User\n");
-        printf("4. Delete User\n");
-        printf("5. Exit\n");
+
+        printf("Enter 6 to show menu.\n");
 
         printf("Enter your choice: ");
-        scanf("%c", &x);
+        scanf(" %c", &x);
 
-        if(x<'1' || x>'5')
-        {
-        printf("\nPlease enter correct choice\n");
-        continue;
-        }
+        int c;
+        while ((c = getchar()) != '\n' && c != EOF);
 
         if (x=='1')
         createUser();
@@ -190,8 +243,15 @@ int main()
         deleteUser();
         else if (x=='5')
         break;
+        else if(x=='6')
+        showMenu();
         else
         printf("Invalid choice.\n");
     }
+}
+
+int main()
+{
+    start();
 }
 
