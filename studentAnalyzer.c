@@ -1,5 +1,14 @@
 #include <stdio.h>
+
 #define MAX_STUDENTS 100
+#define MIN_STUDENTS 1
+#define TOTAL_SUBJECTS 3
+#define MIN_MARKS 0
+#define MAX_MARKS 100
+#define GRADE_A_MIN 85
+#define GRADE_B_MIN 70
+#define GRADE_C_MIN 50
+#define GRADE_D_MIN 35
 
 // Structure to store student details
 struct Student
@@ -10,6 +19,17 @@ struct Student
     int marks2;
     int marks3;
 };
+
+// function declarations
+int validateName(char name[]);
+int doesRollNoExists(struct Student students[], int currentIndex, int rollNumber);
+int calculateTotalMarks(struct Student student);
+float calculateAverageMarks(int total);
+char calculateGrade(float average);
+void printPerformance(char grade);
+void printRollNumbers(struct Student students[], int i, int n);
+void takeInputsForStudents(struct Student students[], int n);
+void processStudentDetails(struct Student students[], int n);
 
 // validate the name
 int validateName(char name[])
@@ -47,19 +67,19 @@ int calculateTotalMarks(struct Student student)
 // calculate average marks
 float calculateAverageMarks(int total)
 {
-    return total/3.0;
+    return (float)total/TOTAL_SUBJECTS;
 }
 
 // assign grade to students
 char calculateGrade(float average)
 {
-    if(average>=85)
+    if(average>=GRADE_A_MIN)
     return 'A';
-    else if(average>=70)
+    else if(average>=GRADE_B_MIN)
     return 'B';
-    else if(average>=50)
+    else if(average>=GRADE_C_MIN)
     return 'C';
-    else if(average>=35)
+    else if(average>=GRADE_D_MIN)
     return 'D';
     else
     return 'F';
@@ -69,16 +89,25 @@ char calculateGrade(float average)
 void printPerformance(char grade)
 {
     int stars;
-    if(grade=='A')
-    stars = 5;
-    else if(grade=='B')
-    stars = 4;
-    else if(grade=='C')
-    stars = 3;
-    else if(grade=='D')
-    stars = 2;
-    else
-    stars = 0;
+    switch (grade)
+    {
+        case 'A':
+            stars = 5;
+            break;
+        case 'B':
+            stars = 4;
+            break;
+        case 'C':
+            stars = 3;
+            break;
+        case 'D':
+            stars = 2;
+            break;
+        case 'F':
+        default:
+            stars = 0;
+            break;
+    }
 
     for(int i=0;i<stars;i++)
     {
@@ -124,19 +153,27 @@ void takeInputsForStudents(struct Student students[], int n)
             break;
             printf("Invalid name!\n");
         }
-
         while(1)
         {
             printf("Enter marks for 1st subjects: ");
             scanf("%d", &students[i].marks1);
-
+            if (students[i].marks1>=MIN_MARKS && students[i].marks1<=MAX_MARKS && students[i].marks2>=MIN_MARKS && students[i].marks2 <= MAX_MARKS && students[i].marks3 >= MIN_MARKS && students[i].marks3 <= MAX_MARKS)
+            break;
+            printf("Invalid marks. Each mark must be between 0 and 100.\n");
+        }
+        while(1)
+        {
             printf("Enter marks for 2nd subjects: ");
             scanf("%d", &students[i].marks2);
-
+            if (students[i].marks1>=MIN_MARKS && students[i].marks1<=MAX_MARKS && students[i].marks2>=MIN_MARKS && students[i].marks2 <= MAX_MARKS && students[i].marks3 >= MIN_MARKS && students[i].marks3 <= MAX_MARKS)
+            break;
+            printf("Invalid marks. Each mark must be between 0 and 100.\n");
+        }
+        while(1)
+        {
             printf("Enter marks for 3rd subjects: ");
             scanf("%d", &students[i].marks3);
-
-            if (students[i].marks1>=0 && students[i].marks1<=100 && students[i].marks2>=0 && students[i].marks2 <= 100 && students[i].marks3 >= 0 && students[i].marks3 <= 100)
+            if (students[i].marks1>=MIN_MARKS && students[i].marks1<=MAX_MARKS && students[i].marks2>=MIN_MARKS && students[i].marks2 <= MAX_MARKS && students[i].marks3 >= MIN_MARKS && students[i].marks3 <= MAX_MARKS)
             break;
             printf("Invalid marks. Each mark must be between 0 and 100.\n");
         }
@@ -158,7 +195,7 @@ void processStudentDetails(struct Student students[], int n)
         printf("Grade: %c\n", grade);
 
         // Skip performance pattern for grade F
-        if (average < 35)
+        if (average < GRADE_D_MIN)
         {
             printf("*****************");
             printf("\n");
@@ -185,7 +222,7 @@ int main()
     printf("Enter number of students: ");
     scanf("%d", &n);
 
-    if (n<1 || n>MAX_STUDENTS)
+    if (n<MIN_STUDENTS || n>MAX_STUDENTS)
     {
         printf("Invalid number of students.\n");
         return 1;
