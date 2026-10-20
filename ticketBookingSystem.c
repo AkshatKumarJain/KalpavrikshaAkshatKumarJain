@@ -14,18 +14,29 @@ typedef enum {
     RECLINER = 3
 } TicketCategory;
 
-// Global variables
-char customerName[50];
-int tickets, choice, ticketPrice;
-TicketCategory category;
-float subtotal, discount, finalBill;
+typedef struct
+{
+    char customerName[50];
+    int tickets;
+    TicketCategory category;
+} BookingInput;
+
+typedef struct
+{
+    float subtotal;
+    float discount;
+    float finalBill;
+} Bill;
+
+BookingInput booking;
+Bill bill;
 
 // Function declarations
 int validateName(char name[]);
 void takeCategory();
-void takeInputs();
-void calculateSubtotal();
-void calculateDiscount();
+int takeInputs();
+int calculateSubtotal();
+int calculateDiscount();
 void calculateFinalBill();
 void displayBookingDetails();
 
@@ -47,45 +58,39 @@ int validateName(char name[])
 // Function to take ticket category
 void takeCategory()
 {
+    int choice;
     while(1)
     {
-        printf("Enter ticket category (1-Standard, 2-Premium, 3-Recliner): ");
         scanf("%d", &choice);
 
         switch (choice)
         {
             case STANDARD:
-                category = STANDARD;
-                ticketPrice = STANDARD_PRICE;
-                break;
+                booking.category = STANDARD;
+                return 1;
 
             case PREMIUM:
-                category = PREMIUM;
-                ticketPrice = PREMIUM_PRICE;
-                break;
+                booking.category = PREMIUM;
+                return 1;
 
             case RECLINER:
-                category = RECLINER;
-                ticketPrice = RECLINER_PRICE;
-                break;
+                booking.category = RECLINER;
+                return 1;
 
             default:
                 printf("Invalid category! Enter 1, 2, or 3.\n");
-                continue;
         }
-        break;
     }
 }
 
 // Function to take user inputs
-void takeInputs()
+int takeInputs()
 {
     while(1)
     {
-        printf("Enter customer name: ");
-        scanf("%49s", customerName);
+        scanf("%49s", booking.customerName);
 
-        if (validateName(customerName))
+        if (validateName(booking.customerName))
         break;
 
         printf("Invalid name!\n");
@@ -94,10 +99,9 @@ void takeInputs()
     // Input and validate number of tickets
     while(1)
     {
-        printf("Enter number of tickets: ");
-        scanf("%d", &tickets);
+        scanf("%d", &booking.tickets);
 
-        if (tickets>=MIN_TICKETS && tickets<=MAX_TICKETS)
+        if (booking.tickets>=MIN_TICKETS && booking.tickets<=MAX_TICKETS)
         break;
 
         printf("Invalid ticket count! Enter between 1 and 20.\n");
@@ -105,37 +109,57 @@ void takeInputs()
 
     // Input ticket category
     takeCategory();
+    return 1;
 }
 
 // Function to calculate subtotal
-void calculateSubtotal()
+int calculateSubtotal()
 {
-    subtotal = tickets*ticketPrice;
+    int ticketPrice;
+    switch (booking.category)
+    {
+        case STANDARD:
+            ticketPrice = STANDARD_PRICE;
+            break;
+
+        case PREMIUM:
+            ticketPrice = PREMIUM_PRICE;
+            break;
+
+        case RECLINER:
+            ticketPrice = RECLINER_PRICE;
+            break;
+
+        default:
+            return 0;
+    }
+
+    bill.subtotal = booking.tickets*ticketPrice;
+    return 1;
 }
 
 // Function to calculate discount
-void calculateDiscount()
+int calculateDiscount()
 {
-    if (tickets>=DISCOUNT_LIMIT)
-    discount = subtotal*DISCOUNT_RATE/100.0;
+    if (booking.tickets>=DISCOUNT_LIMIT)
+    bill.discount = bill.subtotal * DISCOUNT_RATE / 100.0;
     else
-    discount = 0;
+    bill.discount = 0;
+    return 1;
 }
 
 // Function to calculate final bill
 void calculateFinalBill()
 {
-    finalBill = subtotal-discount;
+    bill.finalBill = bill.subtotal-bill.discount;
 }
 
 // Function to display booking details
 void displayBookingDetails()
 {
-    printf("MOVIE TICKET BOOKING DETAILS\n");
-    printf("Customer: %s\n", customerName);
-    printf("Number of Tickets: %d\n", tickets);
+    printf("Customer: %s\n", booking.customerName);
     printf("Ticket Category: ");
-    switch (category)
+    switch (booking.category)
     {
         case STANDARD:
             printf("Standard\n");
@@ -149,16 +173,21 @@ void displayBookingDetails()
             printf("Recliner\n");
             break;
     }
-    printf("Subtotal: Rs. %.2f\n", subtotal);
-    printf("Discount: Rs. %.2f\n", discount);
-    printf("Final Bill: Rs. %.2f\n", finalBill);
+    printf("Tickets: %d\n", booking.tickets);
+    printf("Subtotal: %.2f\n", bill.subtotal);
+    printf("Discount: %.2f\n", bill.discount);
+    printf("Final Bill: %.2f\n", bill.finalBill);
 }
 
 int main()
 {
-    takeInputs();
-    calculateSubtotal();
-    calculateDiscount();
+    if(!takeInputs())
+    return 1;
+    if(!calculateSubtotal())
+    return 1;
+    if(!calculateDiscount())
+    return 1;
     calculateFinalBill();
     displayBookingDetails();
+    return 0;
 }
