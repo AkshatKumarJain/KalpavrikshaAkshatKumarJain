@@ -17,8 +17,8 @@ struct Employee {
 struct Employee *ceo = NULL;
 int employeeCount = 0;
 
-/* Function declarations */
-int validateName(char name[]);
+// Function declarations 
+int  validateName(char name[]);
 struct Employee *findEmployee(struct Employee *employee, int id);
 int countUnder(struct Employee *employee);
 void displayHierarchy(struct Employee *employee, int level);
@@ -27,8 +27,11 @@ void removeEmployee(void);
 void displayEmployeeHierarchy(void);
 void displayCompleteHierarchy(void);
 void freeOrganization(struct Employee *employee);
+int takeInput(void);
+void showMenu();
 
-/* Validate name: letters only */
+
+// Validate name
 int validateName(char name[])
 {
     int i = 0;
@@ -84,6 +87,10 @@ void displayHierarchy(struct Employee *employee, int level)
 {
     if (employee == NULL)
     return;
+    for (int i = 0; i < level * 4; i++)
+    {
+    printf(" ");
+    }
     printf("%d - %s - %s\n",employee->id, employee->name, employee->designation);
 
     for (int i=0;i<employee->reportCount;i++) {
@@ -134,23 +141,23 @@ void addEmployee()
         printf("The first employee will be the CEO.\n");
     }
 
-    printf("Enter Name (letters only): ");
+    printf("Enter Name: ");
 
     if (scanf("%49s", name) != 1)
         return;
 
     if (!validateName(name)) {
-        printf("Invalid name. Use letters only.\n");
+        printf("Invalid name.\n");
         return;
     }
 
-    printf("Enter Designation (letters only): ");
+    printf("Enter Designation: ");
 
     if (scanf("%49s", designation) != 1)
         return;
 
     if (!validateName(designation)) {
-        printf("Invalid designation. Use letters only.\n");
+        printf("Invalid designation.\n");
         return;
     }
 
@@ -167,10 +174,12 @@ void addEmployee()
     employee->manager = manager;
     employee->reportCount = 0;
 
-    if(manager==NULL){
+    if(manager==NULL)
+    {
         ceo = employee;
     } 
-    else{
+    else
+    {
         manager->reports[manager->reportCount] = employee;
         manager->reportCount++;
     }
@@ -341,8 +350,9 @@ void showMenu(){
     printf("5. Exit\n");
 }
 
-void takeInput(int choice)
+int takeInput()
 {
+    int choice;
     printf("Enter your choice: ");
 
     if (scanf("%d", &choice) != 1) {
@@ -374,16 +384,17 @@ void takeInput(int choice)
         default:
             printf("Invalid choice. Enter 1 to 5.\n");
         }
+        return choice;
 }
 
 /* Main function */
 int main()
 {
-    int choice;
+    int choice = 0;
     while(choice!=5)
     {
         showMenu();
-        takeInput(choice);
+        choice = takeInput();
     }
 
     freeOrganization(ceo);
