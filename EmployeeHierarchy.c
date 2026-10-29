@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #define NAME_LEN 50
 #define MAX_REPORTS 100
+#define MAX_TOP_LEVEL 100
 
 struct Employee {
     int id;
@@ -14,12 +14,14 @@ struct Employee {
     int reportCount;
 };
 
-struct Employee *ceo = NULL;
+struct Employee *topLevel[MAX_TOP_LEVEL];
+int topLevelCount = 0;
 int employeeCount = 0;
 
 // Function declarations 
 int  validateName(char name[]);
 struct Employee *findEmployee(struct Employee *employee, int id);
+struct Employee *findEmployeeInOrganization(int id);
 int countUnder(struct Employee *employee);
 void displayHierarchy(struct Employee *employee, int level);
 void addEmployee(void);
@@ -67,6 +69,19 @@ struct Employee *findEmployee(struct Employee *employee, int id)
     return NULL;
 }
 
+// Find employee in the complete organization
+struct Employee *findEmployeeInOrganization(int id)
+{
+    for (int i = 0; i < topLevelCount; i++) {
+        struct Employee *found = findEmployee(topLevel[i], id);
+
+        if (found != NULL)
+            return found;
+    }
+
+    return NULL;
+}
+
 // Count all employees under an employee recursively
 int countUnder(struct Employee *employee)
 {
@@ -85,11 +100,11 @@ int countUnder(struct Employee *employee)
 // Display hierarchy recursively
 void displayHierarchy(struct Employee *employee, int level)
 {
-    if (employee == NULL)
+    if(employee == NULL)
     return;
-    for (int i = 0; i < level * 4; i++)
+    for(int i = 0; i < level * 4; i++)
     {
-    printf(" ");
+        printf(" ");
     }
     printf("%d - %s - %s\n",employee->id, employee->name, employee->designation);
 
@@ -111,22 +126,29 @@ void addEmployee()
         return;
     }
 
-    if (findEmployee(ceo, id) != NULL) {
+    if (findEmployeeInOrganization(id) != NULL) {
         printf("Employee ID already exists.\n");
         return;
     }
 
     struct Employee *manager = NULL;
 
-    if (ceo != NULL) {
-        printf("Enter Reporting Manager ID: ");
+    printf("Enter Reporting Manager ID (0 for no manager): ");
 
-        if (scanf("%d", &managerId) != 1 || managerId <= 0) {
-            printf("Invalid manager ID.\n");
+    if (scanf("%d", &managerId) != 1 || managerId < 0) {
+        printf("Invalid manager ID.\n");
+        return;
+    }
+
+    if (managerId == 0) {
+        if (topLevelCount >= MAX_TOP_LEVEL) {
+            printf("Maximum top-level employees reached.\n");
             return;
         }
 
-        manager = findEmployee(ceo, managerId);
+        printf("This employee will be a top-level employee.\n");
+    } else {
+        manager = findEmployeeInOrganization(managerId);
 
         if (manager == NULL) {
             printf("Reporting manager not found.\n");
@@ -137,8 +159,6 @@ void addEmployee()
             printf("This manager cannot have more direct reports.\n");
             return;
         }
-    } else {
-        printf("The first employee will be the CEO.\n");
     }
 
     printf("Enter Name: ");
@@ -169,14 +189,32 @@ void addEmployee()
     }
 
     employee->id = id;
-    strcpy(employee->name, name);
-    strcpy(employee->designation, designation);
+   
+    int i = 0;
+
+    while(name[i]!='\0') 
+    {
+        employee->name[i] = name[i];
+        i++;
+    }
+    employee->name[i]='\0';
+
+    i = 0;
+
+    while(designation[i]!='\0') 
+    {
+        employee->designation[i] = designation[i];
+        i++;
+    }
+    employee->designation[i] = '\0';
+
     employee->manager = manager;
     employee->reportCount = 0;
 
     if(manager==NULL)
     {
-        ceo = employee;
+        topLevel[topLevelCount] = employee;
+        topLevelCount++;
     } 
     else
     {
@@ -243,15 +281,15 @@ void removeEmployee()
         return;
     }
 
-    struct Employee *employee = findEmployee(ceo, id);
+    struct Employee *employee = findEmployeeInOrganization(id);
 
     if (employee==NULL) {
         printf("Employee not found.\n");
         return;
     }
 
-    if (employee==ceo) {
-        printf("The CEO cannot be removed.\n");
+    if (employee->manager == NULL) {
+        printf("A top-level employee cannot be removed.\n");
         return;
     }
 
@@ -263,10 +301,11 @@ void removeEmployee()
 
         int availableReports = MAX_REPORTS-target->reportCount;
 
-        if (target == manager)
+        if(target == manager)
         availableReports++;
 
-        if (employee->reportCount > availableReports) {
+        if(employee->reportCount > availableReports) 
+        {
             printf("Cannot remove employee: target has insufficient capacity.\n");
             return;
         }
@@ -305,7 +344,7 @@ void displayEmployeeHierarchy(void)
         printf("Invalid employee ID.\n");
         return;
     }
-    struct Employee *employee = findEmployee(ceo, id);
+    struct Employee *employee = findEmployeeInOrganization(id);
     if (employee == NULL) {
         printf("Employee not found.\n");
         return;
@@ -321,12 +360,18 @@ void displayEmployeeHierarchy(void)
 // Display complete organization 
 void displayCompleteHierarchy()
 {
-    if(ceo==NULL) {
+    if(topLevelCount == 0) 
+    {
         printf("Organization is empty.\n");
         return;
     }
     printf("\n===== ORGANIZATION HIERARCHY =====\n");
-    displayHierarchy(ceo, 0);
+
+    for(int i=0;i<topLevelCount;i++) 
+    {
+        displayHierarchy(topLevel[i], 0);
+    }
+
     printf("Total Employees: %d\n", employeeCount);
 }
 
@@ -387,7 +432,7 @@ int takeInput()
         return choice;
 }
 
-/* Main function */
+// Main function
 int main()
 {
     int choice = 0;
@@ -397,6 +442,9 @@ int main()
         choice = takeInput();
     }
 
-    freeOrganization(ceo);
+    for (int i = 0; i < topLevelCount; i++) {
+        freeOrganization(topLevel[i]);
+    }
+
     return 0;
 }
