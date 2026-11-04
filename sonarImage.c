@@ -4,7 +4,7 @@
 
 #define MIN_SIZE 2
 #define MAX_SIZE 10
-#define minvalue 0
+#define MIN_VALUE 0
 #define MAX_VALUE 255
 
 int readMatrixSize();
@@ -20,18 +20,19 @@ void smoothMatrix(int *matrix,int size);
 
 int readMatrixSize()
 {
-    int size,result,ch;
+    int size,ch;
+    char extra;
 
     while(1){
         printf("Enter matrix size (%d-%d): ",MIN_SIZE,MAX_SIZE);
 
-        result = scanf("%d",&size);
+        int result = scanf("%d%c",&size,&extra);
 
-        if(result==EOF){
+        if(result==EOF || (result==1 && feof(stdin))){
             exit(1);
         }
 
-        if(result==1 && size>=MIN_SIZE && size<=MAX_SIZE){
+        if(result==2 && extra=='\n' && size>=MIN_SIZE && size<=MAX_SIZE){
             return size;
         }
 
@@ -51,7 +52,7 @@ void generateMatrix(int *matrix,int size)
     int *cell;
 
     for(cell=matrix;cell<matrix+size*size;cell++){
-        *cell=rand()%(MAX_VALUE-minvalue+1)+minvalue;
+        *cell=rand()%(MAX_VALUE-MIN_VALUE+1)+MIN_VALUE;
     }
 }
 
@@ -143,9 +144,19 @@ int averageAround(int *matrix,int size,int *previous,int *current,int row,int co
 }
 
 void smoothMatrix(int *matrix,int size){
-    int previous[MAX_SIZE]={0};
-    int current[MAX_SIZE]={0};
+    int *previous;
+    int *current;
     int row,column;
+
+    previous=(int *)calloc(size,sizeof(int));
+    current=(int *)malloc(size*sizeof(int));
+
+    if(previous==NULL || current==NULL){
+        printf("Memory allocation failed.\n");
+        free(previous);
+        free(current);
+        exit(1);
+    }
 
     for(row=0;row<size;row++)
     {
@@ -157,13 +168,23 @@ void smoothMatrix(int *matrix,int size){
 
         copyRow(current,previous,size);
     }
+
+    free(previous);
+    free(current);
 }
 
 int main(){
     int size;
-    int matrix[MAX_SIZE*MAX_SIZE];
+    int *matrix;
 
     size=readMatrixSize();
+
+    matrix=(int *)malloc(size*size*sizeof(int));
+
+    if(matrix==NULL){
+        printf("Memory allocation failed.\n");
+        return 1;
+    }
 
     srand((unsigned int)time(NULL));
 
@@ -179,6 +200,8 @@ int main(){
     smoothMatrix(matrix,size);
     printf("\nMatrix after Applying 3x3 Smoothing Filter:\n");
     displayMatrix(matrix,size);
+
+    free(matrix);
 
     return 0;
 }
