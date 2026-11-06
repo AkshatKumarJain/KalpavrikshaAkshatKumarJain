@@ -145,6 +145,8 @@ void destroyManager(struct MemorySystem *system)
 {
     free(system->pool);
     free(system->segments);
+    system->pool = NULL;
+    system->segments = NULL;
 }
 
 void zeroMemory(struct MemorySystem *system,int begin,int length)
@@ -488,6 +490,8 @@ void freeMemory(struct MemorySystem *system)
     system->segments[pos].state=FREE;
     system->segments[pos].allocationId=0;
     combineFreeSegments(system);
+    system->fragmentationFlag = 0;
+    system->failedSize = 0;
     printf("Allocation released.\n");
 }
 
