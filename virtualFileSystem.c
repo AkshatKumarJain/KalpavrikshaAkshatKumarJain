@@ -8,7 +8,7 @@
 #define COMMAND_COUNT 11
 
 enum InputStatus { INPUT_EOF=0, INPUT_OK=1, INPUT_TOO_LONG=2 };
-enum NodeType { FILE_TYPE=1, DIRECTORY_TYPE=2 };
+enum NodeType { NODE_FILE=1, NODE_DIRECTORY=2 };
 enum Command {
     COMMAND_EXIT=1, COMMAND_LS=2, COMMAND_PWD=3, COMMAND_DF=4,
     COMMAND_MKDIR=5, COMMAND_CREATE=6, COMMAND_READ=7,
@@ -16,78 +16,79 @@ enum Command {
     COMMAND_WRITE=11
 };
 
-typedef struct FreeBlock FreeBlock;
-typedef struct FileNode FileNode;
-typedef struct VirtualFileSystem VirtualFileSystem;
+typedef struct FreeBlockEntry FreeBlockEntry;
+typedef struct FsEntry FsEntry;
+typedef struct VirtualFileSystemState VirtualFileSystemState;
 
-struct FreeBlock {
+struct FreeBlockEntry {
     int index;
-    FreeBlock *next;
-    FreeBlock *prev;
+    FreeBlockEntry *next;
+    FreeBlockEntry *prev;
 };
 
-struct FileNode {
+struct FsEntry {
     char name[MAX_NAME_LENGTH+1];
     int type;
-    int size;
-    int blockCount;
-    int *blockPointers;
-    FileNode *parent;
-    FileNode *next;
-    FileNode *prev;
-    FileNode *children;
+    int byte_size;
+    int block_count;
+    int *block_ids;
+    FsEntry *parent;
+    // Children are kept in a circular doubly linked sibling list. 
+    FsEntry *next;
+    FsEntry *prev;
+    FsEntry *children;
 };
 
-struct VirtualFileSystem {
-    unsigned char (*virtualDisk)[BLOCK_SIZE];
-    FreeBlock *freeHead;
-    FreeBlock *freeTail;
-    FreeBlock *blockNodes;
-    int freeCount;
-    FileNode *root;
-    FileNode *cwd;
+struct VirtualFileSystemState {
+    unsigned char (*disk_blocks)[BLOCK_SIZE];
+    FreeBlockEntry *available_head;
+    FreeBlockEntry *available_tail;
+    FreeBlockEntry *free_block_entries;
+    int available_count;
+    FsEntry *root;
+    FsEntry *working_directory;
 };
 
-/* Function declarations */
-int stringLength(const char text[]);
-int stringCompare(const char first[], const char second[]);
-void stringCopy(char destination[], const char source[]);
-int isSpaceCharacter(char ch);
-int readLine(char line[]);
+// Function declarations
+int text_length(const char text[]);
+int text_compare(const char first[], const char second[]);
+void text_copy(char destination[], const char source[]);
+int is_space(char ch);
+int read_input_line(char line[]);
 
-FileNode *createNode(char name[], int type, FileNode *parent);
-void insertChild(FileNode *directory, FileNode *node);
-void removeChild(FileNode *directory, FileNode *node);
-FileNode *findChild(FileNode *directory, const char name[]);
-void freeTree(FileNode *node);
+FsEntry *create_entry(char name[], int type, FsEntry *parent);
+void attach_child(FsEntry *folder, FsEntry *entry);
+void detach_child(FsEntry *folder, FsEntry *entry);
+FsEntry *find_child(FsEntry *folder, const char name[]);
+void free_entry_tree(FsEntry *entry);
 
-void appendFreeBlock(VirtualFileSystem *vfs, int index);
-int takeFreeBlock(VirtualFileSystem *vfs);
-void releaseBlocks(VirtualFileSystem *vfs, FileNode *file);
+void append_free_block(VirtualFileSystemState *fs, int index);
+int take_free_block(VirtualFileSystemState *fs);
+void release_file_blocks(VirtualFileSystemState *fs, FsEntry *file_entry);
 
-int initializeVfs(VirtualFileSystem *vfs);
-void destroyVfs(VirtualFileSystem *vfs);
+int initialize_filesystem(VirtualFileSystemState *fs);
+void destroy_filesystem(VirtualFileSystemState *fs);
 
-void printPath(FileNode *node);
-void addEntry(VirtualFileSystem *vfs, char name[], int type);
-void writeFile(VirtualFileSystem *vfs, FileNode *file, const char content[], int length);
-void readFile(VirtualFileSystem *vfs, FileNode *file);
-void deleteFile(VirtualFileSystem *vfs, char name[]);
-void removeDirectory(VirtualFileSystem *vfs, char name[]);
-void changeDirectory(VirtualFileSystem *vfs, char name[]);
-void listDirectory(VirtualFileSystem *vfs);
-void showDiskUsage(VirtualFileSystem *vfs);
-void runWriteCommand(VirtualFileSystem *vfs, char line[]);
-int executeCommand(VirtualFileSystem *vfs, char line[]);
+void print_working_path(FsEntry *entry);
+void create_named_entry(VirtualFileSystemState *fs, char name[], int type);
+void write_file_contents(VirtualFileSystemState *fs, FsEntry *file_entry, const char content[], int length);
+void display_file_contents(VirtualFileSystemState *fs, FsEntry *file_entry);
+void delete_named_file(VirtualFileSystemState *fs, char name[]);
+void remove_empty_directory(VirtualFileSystemState *fs, char name[]);
+void change_working_directory(VirtualFileSystemState *fs, char name[]);
+void list_working_directory(VirtualFileSystemState *fs);
+void display_disk_usage(VirtualFileSystemState *fs);
+void parse_write_command(VirtualFileSystemState *fs, char line[], int argument_start);
+int dispatch_command(VirtualFileSystemState *fs, char line[]);
 
-/* String helper functions */
-int stringLength(const char text[]) {
+// String helper functions 
+int text_length(const char text[]) {
     int length=0;
     while(text[length]!='\0') length++;
     return length;
 }
 
-int stringCompare(const char first[], const char second[]) {
+int text_compare(const char first[], const char second[]) {
     int i=0;
     while(first[i]!='\0' && second[i]!='\0') {
         if(first[i]!=second[i]) return first[i]-second[i];
@@ -96,7 +97,7 @@ int stringCompare(const char first[], const char second[]) {
     return first[i]-second[i];
 }
 
-void stringCopy(char destination[], const char source[]) {
+void text_copy(char destination[], const char source[]) {
     int i=0;
     while(source[i]!='\0') {
         destination[i]=source[i];
@@ -105,12 +106,12 @@ void stringCopy(char destination[], const char source[]) {
     destination[i]='\0';
 }
 
-int isSpaceCharacter(char ch) {
+int is_space(char ch) {
     return ch==' ' || ch=='\t' || ch=='\r' || ch=='\n';
 }
 
-/* Input handling */
-int readLine(char line[]) {
+// Input handling
+int read_input_line(char line[]) {
     int ch, length=0, tooLong=0;
 
     while(1) {
@@ -131,229 +132,229 @@ int readLine(char line[]) {
     return INPUT_OK;
 }
 
-/* File and directory node operations */
-FileNode *createNode(char name[], int type, FileNode *parent) {
-    FileNode *node;
-    int length=stringLength(name);
+/* File and directory entry operations */
+FsEntry *create_entry(char name[], int type, FsEntry *parent) {
+    FsEntry *entry;
+    int length=text_length(name);
 
     if(length>MAX_NAME_LENGTH) return NULL;
 
-    node=malloc(sizeof(FileNode));
-    if(node==NULL) return NULL;
+    entry=malloc(sizeof(FsEntry));
+    if(entry==NULL) return NULL;
 
-    stringCopy(node->name, name);
-    node->type=type;
-    node->size=0;
-    node->blockCount=0;
-    node->blockPointers=NULL;
-    node->parent=parent;
-    node->next=node;
-    node->prev=node;
-    node->children=NULL;
+    text_copy(entry->name, name);
+    entry->type=type;
+    entry->byte_size=0;
+    entry->block_count=0;
+    entry->block_ids=NULL;
+    entry->parent=parent;
+    entry->next=entry;
+    entry->prev=entry;
+    entry->children=NULL;
 
-    return node;
+    return entry;
 }
 
-void insertChild(FileNode *directory, FileNode *node) {
-    if(directory->children==NULL) {
-        directory->children=node;
-        node->next=node;
-        node->prev=node;
+void attach_child(FsEntry *folder, FsEntry *entry) {
+    if(folder->children==NULL) {
+        folder->children=entry;
+        entry->next=entry;
+        entry->prev=entry;
     } else {
-        FileNode *last=directory->children->prev;
-        last->next=node;
-        node->prev=last;
-        node->next=directory->children;
-        directory->children->prev=node;
+        FsEntry *last=folder->children->prev;
+        last->next=entry;
+        entry->prev=last;
+        entry->next=folder->children;
+        folder->children->prev=entry;
     }
-    node->parent=directory;
+    entry->parent=folder;
 }
 
-void removeChild(FileNode *directory, FileNode *node) {
-    if(directory==NULL || node==NULL || directory->children==NULL) 
+void detach_child(FsEntry *folder, FsEntry *entry) {
+    if(folder==NULL || entry==NULL || folder->children==NULL)
     return;
 
-    if(node->next==node) 
+    if(entry->next==entry)
     {
-        directory->children=NULL;
+        folder->children=NULL;
     }
     else 
     {
-        node->prev->next=node->next;
-        node->next->prev=node->prev;
+        entry->prev->next=entry->next;
+        entry->next->prev=entry->prev;
 
-        if(directory->children==node) directory->children=node->next;
+        if(folder->children==entry) folder->children=entry->next;
     }
 
-    node->next=node;
-    node->prev=node;
-    node->parent=NULL;
+    entry->next=entry;
+    entry->prev=entry;
+    entry->parent=NULL;
 }
 
-FileNode *findChild(FileNode *directory, const char name[]) {
-    FileNode *current;
+FsEntry *find_child(FsEntry *folder, const char name[]) {
+    FsEntry *cursor;
 
-    if(directory==NULL || directory->children==NULL) 
+    if(folder==NULL || folder->children==NULL)
     return NULL;
 
-    current=directory->children;
+    cursor=folder->children;
     do {
-        if(stringCompare(current->name, name)==0) return current;
-        current=current->next;
-    } while(current!=directory->children);
+        if(text_compare(cursor->name, name)==0) return cursor;
+        cursor=cursor->next;
+    } while(cursor!=folder->children);
 
     return NULL;
 }
 
-void freeTree(FileNode *node) {
-    FileNode *first, *current, *next;
+void free_entry_tree(FsEntry *entry) {
+    FsEntry *first, *cursor, *next;
 
-    if(node==NULL) return;
+    if(entry==NULL) return;
 
-    if(node->type==DIRECTORY_TYPE && node->children!=NULL) {
-        first=node->children;
-        current=first->next;
+    if(entry->type==NODE_DIRECTORY && entry->children!=NULL) {
+        first=entry->children;
+        cursor=first->next;
 
-        while(current!=first) {
-            next=current->next;
-            freeTree(current);
-            current=next;
+        while(cursor!=first) {
+            next=cursor->next;
+            free_entry_tree(cursor);
+            cursor=next;
         }
 
-        freeTree(first);
+        free_entry_tree(first);
     }
 
-    free(node->blockPointers);
-    free(node);
+    free(entry->block_ids);
+    free(entry);
 }
 
 /* Free block doubly linked list */
-void appendFreeBlock(VirtualFileSystem *vfs, int index) {
-    FreeBlock *node=&vfs->blockNodes[index];
+void append_free_block(VirtualFileSystemState *fs, int index) {
+    FreeBlockEntry *entry=&fs->free_block_entries[index];
 
-    node->index=index;
-    node->next=NULL;
-    node->prev=vfs->freeTail;
+    entry->index=index;
+    entry->next=NULL;
+    entry->prev=fs->available_tail;
 
-    if(vfs->freeTail==NULL) vfs->freeHead=node;
-    else vfs->freeTail->next=node;
+    if(fs->available_tail==NULL) fs->available_head=entry;
+    else fs->available_tail->next=entry;
 
-    vfs->freeTail=node;
-    vfs->freeCount++;
+    fs->available_tail=entry;
+    fs->available_count++;
 }
 
-int takeFreeBlock(VirtualFileSystem *vfs) {
-    FreeBlock *node;
+int take_free_block(VirtualFileSystemState *fs) {
+    FreeBlockEntry *entry;
     int index;
 
-    if(vfs->freeHead==NULL) return -1;
+    if(fs->available_head==NULL) return -1;
 
-    node=vfs->freeHead;
-    index=node->index;
-    vfs->freeHead=node->next;
+    entry=fs->available_head;
+    index=entry->index;
+    fs->available_head=entry->next;
 
-    if(vfs->freeHead==NULL) vfs->freeTail=NULL;
-    else vfs->freeHead->prev=NULL;
+    if(fs->available_head==NULL) fs->available_tail=NULL;
+    else fs->available_head->prev=NULL;
 
-    node->next=NULL;
-    node->prev=NULL;
-    vfs->freeCount--;
+    entry->next=NULL;
+    entry->prev=NULL;
+    fs->available_count--;
 
     return index;
 }
 
-void releaseBlocks(VirtualFileSystem *vfs, FileNode *file) {
+void release_file_blocks(VirtualFileSystemState *fs, FsEntry *file_entry) {
     int i;
 
-    for(i=0; i<file->blockCount; i++) {
-        appendFreeBlock(vfs, file->blockPointers[i]);
+    for(i=0; i<file_entry->block_count; i++) {
+        append_free_block(fs, file_entry->block_ids[i]);
     }
 
-    free(file->blockPointers);
-    file->blockPointers=NULL;
-    file->blockCount=0;
-    file->size=0;
+    free(file_entry->block_ids);
+    file_entry->block_ids=NULL;
+    file_entry->block_count=0;
+    file_entry->byte_size=0;
 }
 
 /* Virtual file system initialization and cleanup */
-int initializeVfs(VirtualFileSystem *vfs) {
+int initialize_filesystem(VirtualFileSystemState *fs) {
     int i;
-    char rootName[]="/";
+    char root_name[]="/";
 
-    vfs->virtualDisk=NULL;
-    vfs->freeHead=NULL;
-    vfs->freeTail=NULL;
-    vfs->blockNodes=NULL;
-    vfs->freeCount=0;
-    vfs->root=NULL;
-    vfs->cwd=NULL;
+    fs->disk_blocks=NULL;
+    fs->available_head=NULL;
+    fs->available_tail=NULL;
+    fs->free_block_entries=NULL;
+    fs->available_count=0;
+    fs->root=NULL;
+    fs->working_directory=NULL;
 
-    vfs->virtualDisk=malloc(NUM_BLOCKS*sizeof(*vfs->virtualDisk));
-    if(vfs->virtualDisk==NULL) {
+    fs->disk_blocks=malloc(NUM_BLOCKS*sizeof(*fs->disk_blocks));
+    if(fs->disk_blocks==NULL) {
         printf("Error: Unable to allocate virtual disk.\n");
         return 0;
     }
 
-    vfs->blockNodes=malloc(NUM_BLOCKS*sizeof(FreeBlock));
-    if(vfs->blockNodes==NULL) {
+    fs->free_block_entries=malloc(NUM_BLOCKS*sizeof(FreeBlockEntry));
+    if(fs->free_block_entries==NULL) {
         printf("Error: Unable to allocate free block nodes.\n");
-        destroyVfs(vfs);
+        destroy_filesystem(fs);
         return 0;
     }
 
-    for(i=0; i<NUM_BLOCKS; i++) appendFreeBlock(vfs, i);
+    for(i=0; i<NUM_BLOCKS; i++) append_free_block(fs, i);
 
-    vfs->root=createNode(rootName, DIRECTORY_TYPE, NULL);
-    if(vfs->root==NULL) {
+    fs->root=create_entry(root_name, NODE_DIRECTORY, NULL);
+    if(fs->root==NULL) {
         printf("Error: Unable to create root directory.\n");
-        destroyVfs(vfs);
+        destroy_filesystem(fs);
         return 0;
     }
 
-    vfs->cwd=vfs->root;
+    fs->working_directory=fs->root;
     return 1;
 }
 
-void destroyVfs(VirtualFileSystem *vfs) {
-    freeTree(vfs->root);
-    free(vfs->blockNodes);
-    free(vfs->virtualDisk);
+void destroy_filesystem(VirtualFileSystemState *fs) {
+    free_entry_tree(fs->root);
+    free(fs->free_block_entries);
+    free(fs->disk_blocks);
 
-    vfs->root=NULL;
-    vfs->cwd=NULL;
-    vfs->blockNodes=NULL;
-    vfs->virtualDisk=NULL;
-    vfs->freeHead=NULL;
-    vfs->freeTail=NULL;
-    vfs->freeCount=0;
+    fs->root=NULL;
+    fs->working_directory=NULL;
+    fs->free_block_entries=NULL;
+    fs->disk_blocks=NULL;
+    fs->available_head=NULL;
+    fs->available_tail=NULL;
+    fs->available_count=0;
 }
 
 /* Path handling */
-void printPath(FileNode *node) {
-    if(node==NULL) return;
+void print_working_path(FsEntry *entry) {
+    if(entry==NULL) return;
 
-    if(node->parent==NULL) {
+    if(entry->parent==NULL) {
         printf("/");
         return;
     }
 
-    printPath(node->parent);
+    print_working_path(entry->parent);
 
-    if(node->parent->parent!=NULL) printf("/");
-    printf("%s", node->name);
+    if(entry->parent->parent!=NULL) printf("/");
+    printf("%s", entry->name);
 }
 
 /* Create file or directory */
-void addEntry(VirtualFileSystem *vfs, char name[], int type) {
-    FileNode *node;
-    int length=stringLength(name), i;
+void create_named_entry(VirtualFileSystemState *fs, char name[], int type) {
+    FsEntry *entry;
+    int length=text_length(name), i;
 
     if(length==0 || length>MAX_NAME_LENGTH) {
         printf("Error: Invalid name length.\n");
         return;
     }
 
-    if(stringCompare(name, ".")==0 || stringCompare(name, "..")==0) {
+    if(text_compare(name, ".")==0 || text_compare(name, "..")==0) {
         printf("Error: Reserved name cannot be used.\n");
         return;
     }
@@ -365,29 +366,29 @@ void addEntry(VirtualFileSystem *vfs, char name[], int type) {
         }
     }
 
-    if(findChild(vfs->cwd, name)!=NULL) {
+    if(find_child(fs->working_directory, name)!=NULL) {
         printf("Error: An entry with this name already exists.\n");
         return;
     }
 
-    node=createNode(name, type, vfs->cwd);
-    if(node==NULL) {
+    entry=create_entry(name, type, fs->working_directory);
+    if(entry==NULL) {
         printf("Error: Memory allocation failed.\n");
         return;
     }
 
-    insertChild(vfs->cwd, node);
+    attach_child(fs->working_directory, entry);
 
-    if(type==DIRECTORY_TYPE) printf("Directory '%s' created successfully.\n", name);
+    if(type==NODE_DIRECTORY) printf("Directory '%s' created successfully.\n", name);
     else printf("File '%s' created successfully.\n", name);
 }
 
 /* Write file */
-void writeFile(VirtualFileSystem *vfs, FileNode *file, const char content[], int length) {
-    int requiredBlocks, *newPointers=NULL;
+void write_file_contents(VirtualFileSystemState *fs, FsEntry *file_entry, const char content[], int length) {
+    int required_blocks, *new_block_ids=NULL;
     int i, copied=0;
 
-    if(file==NULL || file->type!=FILE_TYPE) {
+    if(file_entry==NULL || file_entry->type!=NODE_FILE) {
         printf("Error: Invalid file.\n");
         return;
     }
@@ -397,75 +398,75 @@ void writeFile(VirtualFileSystem *vfs, FileNode *file, const char content[], int
         return;
     }
 
-    requiredBlocks=(length+BLOCK_SIZE-1)/BLOCK_SIZE;
+    required_blocks=(length+BLOCK_SIZE-1)/BLOCK_SIZE;
 
-    if(requiredBlocks>vfs->freeCount+file->blockCount) {
+    if(required_blocks>fs->available_count+file_entry->block_count) {
         printf("Error: Not enough disk space.\n");
         return;
     }
 
-    if(requiredBlocks>0) {
-        newPointers=malloc(requiredBlocks*sizeof(int));
-        if(newPointers==NULL) {
+    if(required_blocks>0) {
+        new_block_ids=malloc(required_blocks*sizeof(int));
+        if(new_block_ids==NULL) {
             printf("Error: Memory allocation failed.\n");
             return;
         }
     }
 
-    releaseBlocks(vfs, file);
+    release_file_blocks(fs, file_entry);
 
-    for(i=0; i<requiredBlocks; i++) {
-        newPointers[i]=takeFreeBlock(vfs);
+    for(i=0; i<required_blocks; i++) {
+        new_block_ids[i]=take_free_block(fs);
 
-        if(newPointers[i]==-1) {
+        if(new_block_ids[i]==-1) {
             int j;
-            for(j=0; j<i; j++) appendFreeBlock(vfs, newPointers[j]);
-            free(newPointers);
+            for(j=0; j<i; j++) append_free_block(fs, new_block_ids[j]);
+            free(new_block_ids);
             printf("Error: Disk allocation failed.\n");
             return;
         }
     }
 
-    for(i=0; i<requiredBlocks; i++) {
-        int bytesToCopy=length-copied, j;
-        if(bytesToCopy>BLOCK_SIZE) bytesToCopy=BLOCK_SIZE;
+    for(i=0; i<required_blocks; i++) {
+        int bytes_to_copy=length-copied, j;
+        if(bytes_to_copy>BLOCK_SIZE) bytes_to_copy=BLOCK_SIZE;
 
-        for(j=0; j<bytesToCopy; j++) {
-            vfs->virtualDisk[newPointers[i]][j]=(unsigned char)content[copied];
+        for(j=0; j<bytes_to_copy; j++) {
+            fs->disk_blocks[new_block_ids[i]][j]=(unsigned char)content[copied];
             copied++;
         }
     }
 
-    file->blockPointers=newPointers;
-    file->blockCount=requiredBlocks;
-    file->size=length;
+    file_entry->block_ids=new_block_ids;
+    file_entry->block_count=required_blocks;
+    file_entry->byte_size=length;
 
-    printf("File '%s' written successfully. (%d bytes)\n", file->name, length);
+    printf("File '%s' written successfully. (%d bytes)\n", file_entry->name, length);
 }
 
 /* Read file */
-void readFile(VirtualFileSystem *vfs, FileNode *file) {
+void display_file_contents(VirtualFileSystemState *fs, FsEntry *file_entry) {
     int remaining, i;
 
-    if(file==NULL || file->type!=FILE_TYPE) {
+    if(file_entry==NULL || file_entry->type!=NODE_FILE) {
         printf("Error: Invalid file.\n");
         return;
     }
 
-    if(file->size==0) {
+    if(file_entry->byte_size==0) {
         printf("File is empty.\n");
         return;
     }
 
-    remaining=file->size;
-    printf("Contents of '%s':\n", file->name);
+    remaining=file_entry->byte_size;
+    printf("Contents of '%s':\n", file_entry->name);
 
-    for(i=0; i<file->blockCount && remaining>0; i++) {
+    for(i=0; i<file_entry->block_count && remaining>0; i++) {
         int bytesToRead=remaining, j;
         if(bytesToRead>BLOCK_SIZE) bytesToRead=BLOCK_SIZE;
 
         for(j=0; j<bytesToRead; j++) {
-            putchar(vfs->virtualDisk[file->blockPointers[i]][j]);
+            putchar(fs->disk_blocks[file_entry->block_ids[i]][j]);
         }
 
         remaining-=bytesToRead;
@@ -475,87 +476,87 @@ void readFile(VirtualFileSystem *vfs, FileNode *file) {
 }
 
 /* Delete file */
-void deleteFile(VirtualFileSystem *vfs, char name[]) {
-    FileNode *file=findChild(vfs->cwd, name);
+void delete_named_file(VirtualFileSystemState *fs, char name[]) {
+    FsEntry *file_entry=find_child(fs->working_directory, name);
 
-    if(file==NULL) {
+    if(file_entry==NULL) {
         printf("Error: File not found.\n");
         return;
     }
 
-    if(file->type!=FILE_TYPE) {
+    if(file_entry->type!=NODE_FILE) {
         printf("Error: '%s' is not a file.\n", name);
         return;
     }
 
-    releaseBlocks(vfs, file);
-    removeChild(vfs->cwd, file);
-    free(file);
+    release_file_blocks(fs, file_entry);
+    detach_child(fs->working_directory, file_entry);
+    free(file_entry);
 
     printf("File '%s' deleted successfully.\n", name);
 }
 
 /* Remove directory */
-void removeDirectory(VirtualFileSystem *vfs, char name[]) {
-    FileNode *directory=findChild(vfs->cwd, name);
+void remove_empty_directory(VirtualFileSystemState *fs, char name[]) {
+    FsEntry *folder=find_child(fs->working_directory, name);
 
-    if(directory==NULL) {
+    if(folder==NULL) {
         printf("Error: Directory not found.\n");
         return;
     }
 
-    if(directory->type!=DIRECTORY_TYPE) {
+    if(folder->type!=NODE_DIRECTORY) {
         printf("Error: '%s' is not a directory.\n", name);
         return;
     }
 
-    if(directory->children!=NULL) {
+    if(folder->children!=NULL) {
         printf("Error: Directory is not empty.\n");
         return;
     }
 
-    removeChild(vfs->cwd, directory);
-    free(directory);
+    detach_child(fs->working_directory, folder);
+    free(folder);
 
     printf("Directory '%s' removed successfully.\n", name);
 }
 
 /* Change current directory */
-void changeDirectory(VirtualFileSystem *vfs, char name[]) {
-    FileNode *directory;
+void change_working_directory(VirtualFileSystemState *fs, char name[]) {
+    FsEntry *folder;
 
-    if(stringCompare(name, "/")==0) {
-        vfs->cwd=vfs->root;
+    if(text_compare(name, "/")==0) {
+        fs->working_directory=fs->root;
         return;
     }
 
-    if(stringCompare(name, "..")==0) {
-        if(vfs->cwd->parent!=NULL) vfs->cwd=vfs->cwd->parent;
+    if(text_compare(name, "..")==0) {
+        if(fs->working_directory->parent!=NULL) fs->working_directory=fs->working_directory->parent;
         return;
     }
 
-    if(stringCompare(name, ".")==0) return;
+    if(text_compare(name, ".")==0) return;
 
-    directory=findChild(vfs->cwd, name);
+    folder=find_child(fs->working_directory, name);
 
-    if(directory==NULL) {
+    if(folder==NULL) {
         printf("Error: Directory not found.\n");
         return;
     }
 
-    if(directory->type!=DIRECTORY_TYPE) {
+    if(folder->type!=NODE_DIRECTORY) {
         printf("Error: '%s' is not a directory.\n", name);
         return;
     }
 
-    vfs->cwd=directory;
+    fs->working_directory=folder;
 }
 
 /* List directory contents */
-void listDirectory(VirtualFileSystem *vfs) {
-    FileNode *current;
+void list_working_directory(VirtualFileSystemState *fs) {
+    FsEntry *cursor;
 
-    if(vfs->cwd->children==NULL) {
+    if(fs->working_directory->children==NULL) {
         printf("Directory is empty.\n");
         return;
     }
@@ -563,56 +564,56 @@ void listDirectory(VirtualFileSystem *vfs) {
     printf("%-25s %-15s %-10s\n", "Name", "Type", "Size");
     printf("--------------------------------------------------\n");
 
-    current=vfs->cwd->children;
+    cursor=fs->working_directory->children;
 
     do {
-        if(current->type==DIRECTORY_TYPE) {
-            printf("%-25s %-15s %-10s\n", current->name, "Directory", "-");
+        if(cursor->type==NODE_DIRECTORY) {
+            printf("%-25s %-15s %-10s\n", cursor->name, "Directory", "-");
         } else {
-            printf("%-25s %-15s %-10d\n", current->name, "File", current->size);
+            printf("%-25s %-15s %-10d\n", cursor->name, "File", cursor->byte_size);
         }
 
-        current=current->next;
-    } while(current!=vfs->cwd->children);
+        cursor=cursor->next;
+    } while(cursor!=fs->working_directory->children);
 }
 
 /* Show disk usage */
-void showDiskUsage(VirtualFileSystem *vfs) {
-    int usedBlocks=NUM_BLOCKS-vfs->freeCount;
+void display_disk_usage(VirtualFileSystemState *fs) {
+    int used_blocks=NUM_BLOCKS-fs->available_count;
 
     printf("Total disk blocks : %d\n", NUM_BLOCKS);
-    printf("Free disk blocks  : %d\n", vfs->freeCount);
-    printf("Used disk blocks  : %d\n", usedBlocks);
+    printf("Free disk blocks  : %d\n", fs->available_count);
+    printf("Used disk blocks  : %d\n", used_blocks);
     printf("Block size        : %d bytes\n", BLOCK_SIZE);
     printf("Total disk space  : %d bytes\n", NUM_BLOCKS*BLOCK_SIZE);
-    printf("Free disk space   : %d bytes\n", vfs->freeCount*BLOCK_SIZE);
-    printf("Used disk space   : %d bytes\n", usedBlocks*BLOCK_SIZE);
+    printf("Free disk space   : %d bytes\n", fs->available_count*BLOCK_SIZE);
+    printf("Used disk space   : %d bytes\n", used_blocks*BLOCK_SIZE);
 }
 
 /* Write command parser */
-void runWriteCommand(VirtualFileSystem *vfs, char line[]) {
-    int position=5, nameStart, nameLength;
-    int contentStart, contentEnd, contentLength;
+void parse_write_command(VirtualFileSystemState *fs, char line[], int argument_start) {
+    int position=argument_start, name_start, name_length;
+    int content_start, content_end, content_length;
     char name[MAX_NAME_LENGTH+1], quote;
-    FileNode *file;
+    FsEntry *file_entry;
 
-    while(isSpaceCharacter(line[position])) position++;
+    while(is_space(line[position])) position++;
 
-    nameStart=position;
+    name_start=position;
 
-    while(line[position]!='\0' && !isSpaceCharacter(line[position])) position++;
+    while(line[position]!='\0' && !is_space(line[position])) position++;
 
-    nameLength=position-nameStart;
+    name_length=position-name_start;
 
-    if(nameLength==0 || nameLength>MAX_NAME_LENGTH) {
+    if(name_length==0 || name_length>MAX_NAME_LENGTH) {
         printf("Error: Invalid file name.\n");
         return;
     }
 
     {
         int i;
-        for(i=0; i<nameLength; i++) name[i]=line[nameStart+i];
-        name[nameLength]='\0';
+        for(i=0; i<name_length; i++) name[i]=line[name_start+i];
+        name[name_length]='\0';
     }
 
     while(line[position]==' ' || line[position]=='\t') position++;
@@ -623,28 +624,28 @@ void runWriteCommand(VirtualFileSystem *vfs, char line[]) {
     }
 
     quote=line[position];
-    contentStart=position+1;
-    contentEnd=stringLength(line)-1;
+    content_start=position+1;
+    content_end=text_length(line)-1;
 
-    while(contentEnd>=contentStart &&
-          (line[contentEnd]==' ' || line[contentEnd]=='\t' || line[contentEnd]=='\r')) {
-        contentEnd--;
+    while(content_end>=content_start &&
+          (line[content_end]==' ' || line[content_end]=='\t' || line[content_end]=='\r')) {
+        content_end--;
     }
 
-    if(contentEnd<contentStart || line[contentEnd]!=quote) {
+    if(content_end<content_start || line[content_end]!=quote) {
         printf("Error: Missing closing quote.\n");
         return;
     }
 
-    contentLength=contentEnd-contentStart;
-    file=findChild(vfs->cwd, name);
+    content_length=content_end-content_start;
+    file_entry=find_child(fs->working_directory, name);
 
-    if(file==NULL) {
+    if(file_entry==NULL) {
         printf("Error: File not found.\n");
         return;
     }
 
-    if(file->type!=FILE_TYPE) {
+    if(file_entry->type!=NODE_FILE) {
         printf("Error: '%s' is not a file.\n", name);
         return;
     }
@@ -653,146 +654,146 @@ void runWriteCommand(VirtualFileSystem *vfs, char line[]) {
         char content[MAX_INPUT_LENGTH];
         int i;
 
-        for(i=0; i<contentLength; i++) content[i]=line[contentStart+i];
-        content[contentLength]='\0';
+        for(i=0; i<content_length; i++) content[i]=line[content_start+i];
+        content[content_length]='\0';
 
-        writeFile(vfs, file, content, contentLength);
+        write_file_contents(fs, file_entry, content, content_length);
     }
 }
 
 /* Command execution */
-int executeCommand(VirtualFileSystem *vfs, char line[]) {
+int dispatch_command(VirtualFileSystemState *fs, char line[]) {
     char command[MAX_INPUT_LENGTH], argument[MAX_INPUT_LENGTH];
-    int position=0, commandLength=0, argumentLength=0;
-    int commandNumber=0, i;
+    int position=0, command_length=0, argument_length=0;
+    int command_number=0, i;
 
-    char commandNames[COMMAND_COUNT][10]={
+    char command_names[COMMAND_COUNT][10]={
         "exit", "ls", "pwd", "df", "mkdir", "create",
         "read", "delete", "rmdir", "cd", "write"
     };
 
-    int commandValues[COMMAND_COUNT]={
+    int command_values[COMMAND_COUNT]={
         COMMAND_EXIT, COMMAND_LS, COMMAND_PWD, COMMAND_DF,
         COMMAND_MKDIR, COMMAND_CREATE, COMMAND_READ,
         COMMAND_DELETE, COMMAND_RMDIR, COMMAND_CD, COMMAND_WRITE
     };
 
-    while(isSpaceCharacter(line[position])) position++;
+    while(is_space(line[position])) position++;
     if(line[position]=='\0') return 1;
 
-    while(line[position]!='\0' && !isSpaceCharacter(line[position])) {
-        command[commandLength++]=line[position++];
+    while(line[position]!='\0' && !is_space(line[position])) {
+        command[command_length++]=line[position++];
     }
-    command[commandLength]='\0';
+    command[command_length]='\0';
 
     for(i=0; i<COMMAND_COUNT; i++) {
-        if(stringCompare(command, commandNames[i])==0) {
-            commandNumber=commandValues[i];
+        if(text_compare(command, command_names[i])==0) {
+            command_number=command_values[i];
             break;
         }
     }
 
-    if(commandNumber==0) {
+    if(command_number==0) {
         printf("Error: Unknown command '%s'.\n", command);
         return 1;
     }
 
-    while(isSpaceCharacter(line[position])) position++;
+    while(is_space(line[position])) position++;
 
-    if(commandNumber==COMMAND_WRITE) {
-        runWriteCommand(vfs, line);
+    if(command_number==COMMAND_WRITE) {
+        parse_write_command(fs, line, position);
         return 1;
     }
 
     while(line[position]!='\0') {
-        if(argumentLength>=MAX_INPUT_LENGTH-1) {
+        if(argument_length>=MAX_INPUT_LENGTH-1) {
             printf("Error: Argument too long.\n");
             return 1;
         }
-        argument[argumentLength++]=line[position++];
+        argument[argument_length++]=line[position++];
     }
-    argument[argumentLength]='\0';
+    argument[argument_length]='\0';
 
-    while(argumentLength>0 && isSpaceCharacter(argument[argumentLength-1])) {
-        argument[--argumentLength]='\0';
+    while(argument_length>0 && is_space(argument[argument_length-1])) {
+        argument[--argument_length]='\0';
     }
 
-    if(commandNumber==COMMAND_EXIT) {
-        if(argumentLength!=0) {
+    if(command_number==COMMAND_EXIT) {
+        if(argument_length!=0) {
             printf("Error: exit takes no arguments.\n");
             return 1;
         }
         return 0;
     }
 
-    if(commandNumber==COMMAND_LS) {
-        if(argumentLength!=0) {
+    if(command_number==COMMAND_LS) {
+        if(argument_length!=0) {
             printf("Error: ls takes no arguments.\n");
             return 1;
         }
-        listDirectory(vfs);
+        list_working_directory(fs);
         return 1;
     }
 
-    if(commandNumber==COMMAND_PWD) {
-        if(argumentLength!=0) {
+    if(command_number==COMMAND_PWD) {
+        if(argument_length!=0) {
             printf("Error: pwd takes no arguments.\n");
             return 1;
         }
-        printPath(vfs->cwd);
+        print_working_path(fs->working_directory);
         printf("\n");
         return 1;
     }
 
-    if(commandNumber==COMMAND_DF) {
-        if(argumentLength!=0) {
+    if(command_number==COMMAND_DF) {
+        if(argument_length!=0) {
             printf("Error: df takes no arguments.\n");
             return 1;
         }
-        showDiskUsage(vfs);
+        display_disk_usage(fs);
         return 1;
     }
 
-    if(argumentLength==0) {
+    if(argument_length==0) {
         printf("Error: This command requires an argument.\n");
         return 1;
     }
 
-    for(i=0; i<argumentLength; i++) {
-        if(isSpaceCharacter(argument[i])) {
+    for(i=0; i<argument_length; i++) {
+        if(is_space(argument[i])) {
             printf("Error: Invalid argument.\n");
             return 1;
         }
     }
 
-    switch(commandNumber) {
+    switch(command_number) {
         case COMMAND_MKDIR:
-            addEntry(vfs, argument, DIRECTORY_TYPE);
+            create_named_entry(fs, argument, NODE_DIRECTORY);
             break;
 
         case COMMAND_CREATE:
-            addEntry(vfs, argument, FILE_TYPE);
+            create_named_entry(fs, argument, NODE_FILE);
             break;
 
         case COMMAND_READ: {
-            FileNode *file=findChild(vfs->cwd, argument);
+            FsEntry *file_entry=find_child(fs->working_directory, argument);
 
-            if(file==NULL) printf("Error: File not found.\n");
-            else if(file->type!=FILE_TYPE) printf("Error: '%s' is not a file.\n", argument);
-            else readFile(vfs, file);
+            if(file_entry==NULL) printf("Error: File not found.\n");
+            else if(file_entry->type!=NODE_FILE) printf("Error: '%s' is not a file.\n", argument);
+            else display_file_contents(fs, file_entry);
             break;
         }
 
         case COMMAND_DELETE:
-            deleteFile(vfs, argument);
+            delete_named_file(fs, argument);
             break;
 
         case COMMAND_RMDIR:
-            removeDirectory(vfs, argument);
+            remove_empty_directory(fs, argument);
             break;
 
         case COMMAND_CD:
-            changeDirectory(vfs, argument);
+            change_working_directory(fs, argument);
             break;
 
         default:
@@ -805,10 +806,10 @@ int executeCommand(VirtualFileSystem *vfs, char line[]) {
 
 /* Main function */
 int main() {
-    VirtualFileSystem vfs;
+    VirtualFileSystemState fs;
     char line[MAX_INPUT_LENGTH];
 
-    if(!initializeVfs(&vfs)) return 1;
+    if(!initialize_filesystem(&fs)) return 1;
 
     printf("========================================\n");
     printf("       VIRTUAL FILE SYSTEM (VFS)\n");
@@ -817,24 +818,24 @@ int main() {
     printf("Type 'exit' to close the file system.\n\n");
 
     while(1) {
-        int inputStatus, continueRunning;
+        int input_status, continue_running;
 
         printf("VFS> ");
         fflush(stdout);
 
-        inputStatus=readLine(line);
+        input_status=read_input_line(line);
 
-        if(inputStatus==INPUT_EOF) {
+        if(input_status==INPUT_EOF) {
             printf("\n");
             break;
         }
 
-        if(inputStatus==INPUT_TOO_LONG) {
+        if(input_status==INPUT_TOO_LONG) {
             printf("Error: Input line is too long.\n");
             continue;
         }
 
-        if(stringCompare(line, "help")==0) {
+        if(text_compare(line, "help")==0) {
             printf("\nAvailable commands:\n");
             printf("mkdir <name>        - Create a directory\n");
             printf("create <name>       - Create a file\n");
@@ -852,11 +853,11 @@ int main() {
             continue;
         }
 
-        continueRunning=executeCommand(&vfs, line);
-        if(!continueRunning) break;
+        continue_running=dispatch_command(&fs, line);
+        if(!continue_running) break;
     }
 
-    destroyVfs(&vfs);
+    destroy_filesystem(&fs);
     printf("Virtual file system closed successfully.\n");
 
     return 0;
