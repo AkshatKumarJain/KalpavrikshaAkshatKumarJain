@@ -5,7 +5,7 @@
 #define NUM_BLOCKS 1024
 #define MAX_NAME_LENGTH 50
 #define MAX_INPUT_LENGTH 4096
-#define COMMAND_COUNT 11
+#define COMMAND_COUNT 12
 
 enum InputStatus { INPUT_EOF=0, INPUT_OK=1, INPUT_TOO_LONG=2 };
 enum NodeType { NODE_FILE=1, NODE_DIRECTORY=2 };
@@ -13,7 +13,7 @@ enum Command {
     COMMAND_EXIT=1, COMMAND_LS=2, COMMAND_PWD=3, COMMAND_DF=4,
     COMMAND_MKDIR=5, COMMAND_CREATE=6, COMMAND_READ=7,
     COMMAND_DELETE=8, COMMAND_RMDIR=9, COMMAND_CD=10,
-    COMMAND_WRITE=11
+    COMMAND_WRITE=11, COMMAND_HELP=12
 };
 
 typedef struct FreeBlockEntry FreeBlockEntry;
@@ -50,6 +50,10 @@ struct VirtualFileSystemState {
 };
 
 // Function declarations
+int find_command(const char command[]);
+void display_help(void);
+int validate_no_argument_command(int command_number, const char argument[]);
+void execute_command(VirtualFileSystemState *fs, int command_number, char argument[]);
 int text_length(const char text[]);
 int text_compare(const char first[], const char second[]);
 void text_copy(char destination[], const char source[]);
@@ -130,6 +134,129 @@ int read_input_line(char line[]) {
 
     if(tooLong) return INPUT_TOO_LONG;
     return INPUT_OK;
+}
+
+int find_command(const char command[]) {
+    char command_names[COMMAND_COUNT][10]={
+        "exit", "ls", "pwd", "df", "mkdir", "create",
+        "read", "delete", "rmdir", "cd", "write", "help"
+    };
+
+    int command_values[COMMAND_COUNT]={
+        COMMAND_EXIT, COMMAND_LS, COMMAND_PWD, COMMAND_DF,
+        COMMAND_MKDIR, COMMAND_CREATE, COMMAND_READ,
+        COMMAND_DELETE, COMMAND_RMDIR, COMMAND_CD,
+        COMMAND_WRITE, COMMAND_HELP
+    };
+
+    int i;
+
+    for(i=0; i<COMMAND_COUNT; i++) {
+        if(text_compare(command, command_names[i])==0) {
+            return command_values[i];
+        }
+    }
+
+    return 0;
+}
+
+void display_help(void) {
+    printf("\nAvailable commands:\n");
+    printf("mkdir <name>        - Create a directory\n");
+    printf("create <name>       - Create a file\n");
+    printf("write <name> \"text\" - Write to a file\n");
+    printf("read <name>         - Read a file\n");
+    printf("delete <name>       - Delete a file\n");
+    printf("rmdir <name>        - Remove an empty directory\n");
+    printf("ls                  - List directory contents\n");
+    printf("cd <name>           - Change directory\n");
+    printf("cd ..               - Move to parent directory\n");
+    printf("cd /                - Move to root directory\n");
+    printf("pwd                 - Print current directory\n");
+    printf("df                  - Show disk usage\n");
+    printf("help                - Show available commands\n");
+    printf("exit                - Exit the file system\n\n");
+}
+
+int validate_no_argument_command(int command_number, const char argument[]) {
+    if(command_number==COMMAND_EXIT ||
+       command_number==COMMAND_HELP ||
+       command_number==COMMAND_LS ||
+       command_number==COMMAND_PWD ||
+       command_number==COMMAND_DF) {
+
+        if(argument[0]!='\0') {
+            if(command_number==COMMAND_EXIT)
+                printf("Error: exit takes no arguments.\n");
+            else if(command_number==COMMAND_HELP)
+                printf("Error: help takes no arguments.\n");
+            else if(command_number==COMMAND_LS)
+                printf("Error: ls takes no arguments.\n");
+            else if(command_number==COMMAND_PWD)
+                printf("Error: pwd takes no arguments.\n");
+            else
+                printf("Error: df takes no arguments.\n");
+
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+void execute_command(VirtualFileSystemState *fs, int command_number, char argument[]) {
+    int i;
+
+    if(argument[0]=='\0') {
+        printf("Error: This command requires an argument.\n");
+        return;
+    }
+
+    for(i=0; argument[i]!='\0'; i++) {
+        if(is_space(argument[i])) {
+            printf("Error: Invalid argument.\n");
+            return;
+        }
+    }
+
+    switch(command_number) {
+        case COMMAND_MKDIR:
+            create_named_entry(fs, argument, NODE_DIRECTORY);
+            break;
+
+        case COMMAND_CREATE:
+            create_named_entry(fs, argument, NODE_FILE);
+            break;
+
+        case COMMAND_READ: {
+            FsEntry *file_entry=find_child(fs->working_directory, argument);
+
+            if(file_entry==NULL)
+                printf("Error: File not found.\n");
+            else if(file_entry->type!=NODE_FILE)
+                printf("Error: '%s' is not a file.\n", argument);
+            else
+                display_file_contents(fs, file_entry);
+
+            break;
+        }
+
+        case COMMAND_DELETE:
+            delete_named_file(fs, argument);
+            break;
+
+        case COMMAND_RMDIR:
+            remove_empty_directory(fs, argument);
+            break;
+
+        case COMMAND_CD:
+            change_working_directory(fs, argument);
+            break;
+
+        default:
+            printf("Error: Invalid command.\n");
+            break;
+    }
 }
 
 /* File and directory entry operations */
@@ -383,10 +510,11 @@ void create_named_entry(VirtualFileSystemState *fs, char name[], int type) {
     else printf("File '%s' created successfully.\n", name);
 }
 
-/* Write file */
+// Write file 
 void write_file_contents(VirtualFileSystemState *fs, FsEntry *file_entry, const char content[], int length) {
     int required_blocks, *new_block_ids=NULL;
     int i, copied=0;
+    int old_block_count, reused_blocks, allocated_count=0;
 
     if(file_entry==NULL || file_entry->type!=NODE_FILE) {
         printf("Error: Invalid file.\n");
@@ -398,44 +526,64 @@ void write_file_contents(VirtualFileSystemState *fs, FsEntry *file_entry, const 
         return;
     }
 
-    required_blocks=(length+BLOCK_SIZE-1)/BLOCK_SIZE;
+    required_blocks = (length+BLOCK_SIZE-1)/BLOCK_SIZE;
 
-    if(required_blocks>fs->available_count+file_entry->block_count) {
+    old_block_count = file_entry->block_count;
+
+    if(required_blocks > fs->available_count+old_block_count) {
         printf("Error: Not enough disk space.\n");
         return;
     }
 
     if(required_blocks>0) {
-        new_block_ids=malloc(required_blocks*sizeof(int));
-        if(new_block_ids==NULL) {
+        new_block_ids = malloc(required_blocks*sizeof(int));
+
+        if(new_block_ids == NULL) {
             printf("Error: Memory allocation failed.\n");
             return;
         }
     }
 
-    release_file_blocks(fs, file_entry);
+    reused_blocks = required_blocks<old_block_count ? required_blocks : old_block_count;
 
-    for(i=0; i<required_blocks; i++) {
+    for(i=0; i<reused_blocks; i++) {
+        new_block_ids[i]=file_entry->block_ids[i];
+    }
+
+    for(i=reused_blocks; i<required_blocks; i++) {
         new_block_ids[i]=take_free_block(fs);
 
         if(new_block_ids[i]==-1) {
             int j;
-            for(j=0; j<i; j++) append_free_block(fs, new_block_ids[j]);
+
+            for(j=reused_blocks; j<allocated_count+reused_blocks; j++) {
+                append_free_block(fs, new_block_ids[j]);
+            }
+
             free(new_block_ids);
             printf("Error: Disk allocation failed.\n");
             return;
         }
+
+        allocated_count++;
     }
 
     for(i=0; i<required_blocks; i++) {
         int bytes_to_copy=length-copied, j;
+
         if(bytes_to_copy>BLOCK_SIZE) bytes_to_copy=BLOCK_SIZE;
 
         for(j=0; j<bytes_to_copy; j++) {
-            fs->disk_blocks[new_block_ids[i]][j]=(unsigned char)content[copied];
+            fs->disk_blocks[new_block_ids[i]][j] = (unsigned char)content[copied];
             copied++;
         }
     }
+
+    for(i=required_blocks; i<old_block_count; i++) {
+        append_free_block(fs, file_entry->block_ids[i]);
+    }
+
+    free(file_entry->block_ids);
 
     file_entry->block_ids=new_block_ids;
     file_entry->block_count=required_blocks;
@@ -443,6 +591,7 @@ void write_file_contents(VirtualFileSystemState *fs, FsEntry *file_entry, const 
 
     printf("File '%s' written successfully. (%d bytes)\n", file_entry->name, length);
 }
+
 
 /* Read file */
 void display_file_contents(VirtualFileSystemState *fs, FsEntry *file_entry) {
@@ -590,7 +739,8 @@ void display_disk_usage(VirtualFileSystemState *fs) {
     printf("Used disk space   : %d bytes\n", used_blocks*BLOCK_SIZE);
 }
 
-/* Write command parser */
+// Write command parser
+
 void parse_write_command(VirtualFileSystemState *fs, char line[], int argument_start) {
     int position=argument_start, name_start, name_length;
     int content_start, content_end, content_length;
@@ -625,19 +775,28 @@ void parse_write_command(VirtualFileSystemState *fs, char line[], int argument_s
 
     quote=line[position];
     content_start=position+1;
-    content_end=text_length(line)-1;
+    content_end=content_start;
 
-    while(content_end>=content_start &&
-          (line[content_end]==' ' || line[content_end]=='\t' || line[content_end]=='\r')) {
-        content_end--;
+    while(line[content_end]!='\0' && line[content_end]!=quote) {
+        content_end++;
     }
 
-    if(content_end<content_start || line[content_end]!=quote) {
+    if(line[content_end]!=quote) {
         printf("Error: Missing closing quote.\n");
         return;
     }
 
+    position=content_end+1;
+
+    while(is_space(line[position])) position++;
+
+    if(line[position]!='\0') {
+        printf("Error: Unexpected characters after quoted content.\n");
+        return;
+    }
+
     content_length=content_end-content_start;
+
     file_entry=find_child(fs->working_directory, name);
 
     if(file_entry==NULL) {
@@ -654,44 +813,33 @@ void parse_write_command(VirtualFileSystemState *fs, char line[], int argument_s
         char content[MAX_INPUT_LENGTH];
         int i;
 
-        for(i=0; i<content_length; i++) content[i]=line[content_start+i];
+        for(i=0; i<content_length; i++) {
+            content[i]=line[content_start+i];
+        }
+
         content[content_length]='\0';
 
         write_file_contents(fs, file_entry, content, content_length);
     }
 }
 
-/* Command execution */
+// Command execution
 int dispatch_command(VirtualFileSystemState *fs, char line[]) {
     char command[MAX_INPUT_LENGTH], argument[MAX_INPUT_LENGTH];
     int position=0, command_length=0, argument_length=0;
-    int command_number=0, i;
-
-    char command_names[COMMAND_COUNT][10]={
-        "exit", "ls", "pwd", "df", "mkdir", "create",
-        "read", "delete", "rmdir", "cd", "write"
-    };
-
-    int command_values[COMMAND_COUNT]={
-        COMMAND_EXIT, COMMAND_LS, COMMAND_PWD, COMMAND_DF,
-        COMMAND_MKDIR, COMMAND_CREATE, COMMAND_READ,
-        COMMAND_DELETE, COMMAND_RMDIR, COMMAND_CD, COMMAND_WRITE
-    };
+    int command_number;
 
     while(is_space(line[position])) position++;
+
     if(line[position]=='\0') return 1;
 
     while(line[position]!='\0' && !is_space(line[position])) {
         command[command_length++]=line[position++];
     }
+
     command[command_length]='\0';
 
-    for(i=0; i<COMMAND_COUNT; i++) {
-        if(text_compare(command, command_names[i])==0) {
-            command_number=command_values[i];
-            break;
-        }
-    }
+    command_number=find_command(command);
 
     if(command_number==0) {
         printf("Error: Unknown command '%s'.\n", command);
@@ -710,96 +858,44 @@ int dispatch_command(VirtualFileSystemState *fs, char line[]) {
             printf("Error: Argument too long.\n");
             return 1;
         }
+
         argument[argument_length++]=line[position++];
     }
+
     argument[argument_length]='\0';
 
     while(argument_length>0 && is_space(argument[argument_length-1])) {
         argument[--argument_length]='\0';
     }
 
-    if(command_number==COMMAND_EXIT) {
-        if(argument_length!=0) {
-            printf("Error: exit takes no arguments.\n");
-            return 1;
-        }
-        return 0;
+    if(!validate_no_argument_command(command_number, argument)) {
+        return 1;
+    }
+
+    if(command_number==COMMAND_EXIT) return 0;
+
+    if(command_number==COMMAND_HELP) {
+        display_help();
+        return 1;
     }
 
     if(command_number==COMMAND_LS) {
-        if(argument_length!=0) {
-            printf("Error: ls takes no arguments.\n");
-            return 1;
-        }
         list_working_directory(fs);
         return 1;
     }
 
     if(command_number==COMMAND_PWD) {
-        if(argument_length!=0) {
-            printf("Error: pwd takes no arguments.\n");
-            return 1;
-        }
         print_working_path(fs->working_directory);
         printf("\n");
         return 1;
     }
 
     if(command_number==COMMAND_DF) {
-        if(argument_length!=0) {
-            printf("Error: df takes no arguments.\n");
-            return 1;
-        }
         display_disk_usage(fs);
         return 1;
     }
 
-    if(argument_length==0) {
-        printf("Error: This command requires an argument.\n");
-        return 1;
-    }
-
-    for(i=0; i<argument_length; i++) {
-        if(is_space(argument[i])) {
-            printf("Error: Invalid argument.\n");
-            return 1;
-        }
-    }
-
-    switch(command_number) {
-        case COMMAND_MKDIR:
-            create_named_entry(fs, argument, NODE_DIRECTORY);
-            break;
-
-        case COMMAND_CREATE:
-            create_named_entry(fs, argument, NODE_FILE);
-            break;
-
-        case COMMAND_READ: {
-            FsEntry *file_entry=find_child(fs->working_directory, argument);
-
-            if(file_entry==NULL) printf("Error: File not found.\n");
-            else if(file_entry->type!=NODE_FILE) printf("Error: '%s' is not a file.\n", argument);
-            else display_file_contents(fs, file_entry);
-            break;
-        }
-
-        case COMMAND_DELETE:
-            delete_named_file(fs, argument);
-            break;
-
-        case COMMAND_RMDIR:
-            remove_empty_directory(fs, argument);
-            break;
-
-        case COMMAND_CD:
-            change_working_directory(fs, argument);
-            break;
-
-        default:
-            printf("Error: Invalid command.\n");
-            break;
-    }
+    execute_command(fs, command_number, argument);
 
     return 1;
 }
@@ -830,29 +926,11 @@ int main() {
             break;
         }
 
-        if(input_status==INPUT_TOO_LONG) {
+        if(input_status==INPUT_TOO_LONG) 
+        {
             printf("Error: Input line is too long.\n");
             continue;
         }
-
-        if(text_compare(line, "help")==0) {
-            printf("\nAvailable commands:\n");
-            printf("mkdir <name>        - Create a directory\n");
-            printf("create <name>       - Create a file\n");
-            printf("write <name> \"text\" - Write to a file\n");
-            printf("read <name>         - Read a file\n");
-            printf("delete <name>       - Delete a file\n");
-            printf("rmdir <name>        - Remove an empty directory\n");
-            printf("ls                  - List directory contents\n");
-            printf("cd <name>           - Change directory\n");
-            printf("cd ..               - Move to parent directory\n");
-            printf("cd /                - Move to root directory\n");
-            printf("pwd                 - Print current directory\n");
-            printf("df                  - Show disk usage\n");
-            printf("exit                - Exit the file system\n\n");
-            continue;
-        }
-
         continue_running=dispatch_command(&fs, line);
         if(!continue_running) break;
     }
