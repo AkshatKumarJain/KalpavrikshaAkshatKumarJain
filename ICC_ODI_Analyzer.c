@@ -667,10 +667,9 @@ void displayTeamPlayers(void) {
         current = current->next;
     }
 
-    printf("----------------------------------------------------------------------------------------------------------------\n");
+    printf("=============================================================================\n");
     printf("Total Players: %d\n", team->totalPlayers);
-    printf("Average Batting Strike Rate: %.2f\n",
-           team->averageBattingStrikeRate);
+    printf("Average Batting Strike Rate: %.2f\n", team->averageBattingStrikeRate);
 }
 
 int teamShouldComeFirst(Team *first, Team *second) {
@@ -759,8 +758,6 @@ void displayTeamsByStrikeRate(void) {
 
     printf("================================================================\n");
 }
-
-/* ---------------- Requirement 4: Top K players ---------------- */
 
 void displayTopKPlayers(void) {
     int teamId;
@@ -938,7 +935,7 @@ void displayMenu() {
     printf("============================================================\n");
 }
 
-void freeAllMemory(void) {
+void freeAllMemory() {
     int i;
     PlayerNode *current;
     PlayerNode *next;
@@ -969,10 +966,6 @@ int main() {
     }
     loadInitialPlayers();
 
-    printf("==============================================================\n");
-    printf("ICC ODI Player Performance Analyzer initialized.\n");
-    printf("==============================================================\n");
-
     while (1) {
         displayMenu();
 
@@ -981,18 +974,24 @@ int main() {
             break;
         }
 
-        if (choice == 1) {
-            addNewPlayer();
-        } else if (choice == 2) {
-            displayTeamPlayers();
-        } else if (choice == 3) {
-            displayTeamsByStrikeRate();
-        } else if (choice == 4) {
-            displayTopKPlayers();
-        } else if (choice == 5) {
-            displayAllPlayersOfRole();
-        } else if (choice == 6) {
-            break;
+        switch (choice) {
+            case 1:
+                addNewPlayer();
+                break;
+            case 2:
+                displayTeamPlayers();
+                break;
+            case 3:
+                displayTeamsByStrikeRate();
+                break;
+            case 4:
+                displayTopKPlayers();
+                break;
+            case 5:
+                displayAllPlayersOfRole();
+                break;
+            case 6:
+                break;
         }
     }
 
